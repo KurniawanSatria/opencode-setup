@@ -26,14 +26,40 @@ yes_no() { # yes_no <prompt> <default y|n> -> 0 if yes
   case "$a" in [yY]*) return 0 ;; *) return 1 ;; esac
 }
 
-# 1. Install OpenCode if missing
-if ! command -v opencode >/dev/null; then
-  say "Installing OpenCode..."
-  curl -fsSL https://opencode.ai/install | bash
-  export PATH="$HOME/.opencode/bin:$PATH"
+# 1. Install OpenCode if missing, then make sure the shell can find it later
+find_opencode() {
+  command -v opencode 2>/dev/null && return 0
+  for c in "$HOME/.opencode/bin/opencode" "/usr/local/bin/opencode" "$HOME/.local/bin/opencode"; do
+    [ -x "$c" ] && { echo "$c"; return 0; }
+  done
+  return 1
+}
+
+if ! BIN=$(find_opencode); then
+  say "OpenCode not found. Installing..."
+  curl -fsSL https://opencode.ai/install | bash || {
+    say "Install failed. Install manually: https://opencode.ai/v2/docs/cli"
+    exit 1
+  }
+  BIN=$(find_opencode) || { say "Installed, but binary still not found. Open a new shell and re-run."; exit 1; }
+  say "Installed: $BIN"
 fi
-BIN=$(command -v opencode)
 say "OpenCode: $($BIN --version 2>/dev/null || echo installed)"
+
+# PATH persistence: only touch shell rc files if the bin dir is not already on PATH
+bin_dir=$(dirname "$BIN")
+case ":$PATH:" in
+  *":$bin_dir:"*) ;;
+  *)
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+      [ -e "$rc" ] || continue
+      grep -qxF "export PATH=\"$bin_dir:\$PATH\"" "$rc" 2>/dev/null && continue
+      printf '\n# opencode\nexport PATH="%s:$PATH"\n' "$bin_dir" >> "$rc"
+      say "Added $bin_dir to PATH in $rc"
+    done
+    export PATH="$bin_dir:$PATH"
+    ;;
+esac
 
 # 2. Questions
 say ""
