@@ -8,14 +8,15 @@ PORT=4096
 
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 
-ask() { # ask <prompt> <default> -> prints answer (prompt goes to the terminal)
+ask() { # ask <prompt> <default> -> prints answer
+  # stdin may be the script itself (curl | bash), so only ever read the terminal.
   local prompt="$1" default="${2:-}" answer=""
-  if [ -r /dev/tty ] && [ -t 0 ]; then
+  if [ -r /dev/tty ]; then
     printf '%s' "$prompt" > /dev/tty 2>/dev/null
     IFS= read -r answer < /dev/tty 2>/dev/null || answer=""
   else
-    printf '%s' "$prompt" >&2
-    IFS= read -r answer || answer=""
+    printf '%s(default: %s)\n' "$prompt" "$default" >&2
+    answer=""
   fi
   printf '%s' "${answer:-$default}"
 }
