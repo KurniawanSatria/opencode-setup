@@ -71,6 +71,9 @@ if [ "$SERVICE" = yes ]; then
   DOMAIN=$(ask "Domain for HTTPS (blank = localhost only): " "")
 fi
 
+SKILLS=no; yes_no "Install all 19 Anthropic skills?" y && SKILLS=yes
+AGENTS=no; yes_no "Install global AGENTS.md coding guidelines?" y && AGENTS=yes
+
 ROUTER=no; yes_no "Do you have a 9Router instance?" n && ROUTER=yes
 ROUTER_URL=""; ROUTER_KEY=""; MODEL=""
 if [ "$ROUTER" = yes ]; then
@@ -82,12 +85,13 @@ fi
 # 3. Config
 mkdir -p "$DEST"
 cfg="$DEST/opencode.json"
+PLUGINS=',"plugins":["@dietrichgebert/ponytail","opencode-mem"]'
 if [ "$ROUTER" = yes ]; then
   if [ -n "$ROUTER_KEY" ]; then keyjson="$ROUTER_KEY"; else keyjson='{env:9ROUTER_API_KEY}'; fi
   cat > "$cfg" <<EOF
 {
   "\$schema": "https://opencode.ai/config.json",
-  "model": "9router/$MODEL",
+  "model": "9router/$MODEL"$PLUGINS,
   "providers": {
     "9router": {
       "name": "9Router",
@@ -104,13 +108,43 @@ if [ "$ROUTER" = yes ]; then
 }
 EOF
 else
-  cat > "$cfg" <<'EOF'
+  cat > "$cfg" <<EOF
 {
-  "$schema": "https://opencode.ai/config.json"
+  "\$schema": "https://opencode.ai/config.json"$PLUGINS
 }
 EOF
 fi
 say "Config written: $cfg"
+say "Plugins: ponytail, opencode-mem (installed on first start)"
+
+# 3b. Global agent guidelines
+if [ "$AGENTS" = yes ]; then
+  if [ -n "${AGENTS_SOURCE:-}" ] && [ -r "$AGENTS_SOURCE" ]; then
+    cp "$AGENTS_SOURCE" "$DEST/AGENTS.md" && say "AGENTS.md: copied from $AGENTS_SOURCE"
+  elif curl -fsSL -m 30 "https://raw.githubusercontent.com/KurniawanSatria/opencode-setup/main/AGENTS.md" -o "$DEST/AGENTS.md"; then
+    say "AGENTS.md: installed"
+  else
+    say "AGENTS.md download failed"
+  fi
+fi
+
+# 3c. Anthropic skills, straight from the official repo (licenses included)
+if [ "$SKILLS" = yes ]; then
+  say "Downloading skills from github.com/anthropics/skills ..."
+  tmp=$(mktemp -d)
+  if curl -fsSL -m 120 https://github.com/anthropics/skills/archive/refs/heads/main.tar.gz | tar xz -C "$tmp" 2>/dev/null; then
+    mkdir -p "$DEST/skills"
+    for d in "$tmp"/skills-main/skills/*/; do
+      name=$(basename "$d")
+      rm -rf "$DEST/skills/$name"
+      cp -a "$d" "$DEST/skills/$name"
+    done
+    say "Skills: $(ls -1 "$DEST/skills" | wc -l) installed in $DEST/skills"
+  else
+    say "Skills download failed; retry later: bash install.sh"
+  fi
+  rm -rf "$tmp"
+fi
 
 # 4. systemd
 if [ "$SERVICE" = yes ]; then
