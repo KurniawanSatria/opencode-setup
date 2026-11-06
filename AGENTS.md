@@ -72,6 +72,14 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Compact is not code golf: no nested ternaries, no cryptic names, no clever one-liners that need re-reading.
 - Before returning code, scan it for comment lines and remove any.
 
+## 6. Skill Capture
+
+**After every finished task, offer to save it as a skill.**
+
+- Once a task is done, ask once: "Want to turn this into a skill (`proposed-name`)?" Reply in the user's language.
+- Propose a short kebab-case name that describes the reusable workflow, not the one-off task.
+- Create the skill only if the user says yes. Never create one unasked.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

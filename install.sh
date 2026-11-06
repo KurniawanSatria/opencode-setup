@@ -36,16 +36,35 @@ find_opencode() {
   return 1
 }
 
-if ! BIN=$(find_opencode); then
-  say "OpenCode not found. Installing..."
-  curl -fsSL https://opencode.ai/install | bash || {
+install_v2() {
+  curl -fsSL https://opencode.ai/v2/install | bash || {
     say "Install failed. Install manually: https://opencode.ai/v2/docs/cli"
     exit 1
   }
+}
+
+if ! BIN=$(find_opencode); then
+  say "OpenCode not found. Installing V2..."
+  install_v2
   BIN=$(find_opencode) || { say "Installed, but binary still not found. Open a new shell and re-run."; exit 1; }
   say "Installed: $BIN"
 fi
-say "OpenCode: $($BIN --version 2>/dev/null || echo installed)"
+
+ver=$("$BIN" --version 2>/dev/null | head -1 || true)
+say "OpenCode: ${ver:-installed}"
+case "$ver" in
+  *v1.*|*1.*)
+    say "Warning: this is V1. V2 config (plugins, providers, server) needs v2.x."
+    if yes_no "Install V2 to $HOME/.opencode/bin and use it instead?" y; then
+      install_v2
+      if BIN=$(find_opencode) && [[ $("$BIN" --version 2>/dev/null) == *"v2."* ]]; then
+        say "Now using: $BIN ($("$BIN" --version))"
+      else
+        say "V2 installed at $HOME/.opencode/bin/opencode but not first on PATH. Add it before the V1 binary."
+      fi
+    fi
+    ;;
+esac
 
 # PATH persistence: only touch shell rc files if the bin dir is not already on PATH
 bin_dir=$(dirname "$BIN")
