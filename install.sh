@@ -6,25 +6,38 @@ set -euo pipefail
 DEST="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 PORT=4096
 
-say() { printf '\033[1m%s\033[0m\n' "$*"; }
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != dumb ]; then
+  B=$'\033[1m'; D=$'\033[2m'; R=$'\033[31m'; G=$'\033[32m'; Y=$'\033[33m'; C=$'\033[36m'; N=$'\033[0m'
+else
+  B=; D=; R=; G=; Y=; C=; N=
+fi
+
+say() { printf '%s%s%s\n' "$B" "$*" "$N"; }
+ok() { printf '%s%s%s\n' "$G" "$*" "$N"; }
+warn() { printf '%s%s%s\n' "$Y" "$*" "$N"; }
+err() { printf '%s%s%s\n' "$R" "$*" "$N"; }
 
 ask() { # ask <prompt> <default> -> prints answer
   # stdin may be the script itself (curl | bash), so only ever read the terminal.
   local prompt="$1" default="${2:-}" answer=""
+  case "$prompt" in
+    *": "|*"? ") ;;
+    *) prompt="${prompt% }:" ;;
+  esac
   if [ -r /dev/tty ]; then
-    printf '%s' "$prompt" > /dev/tty 2>/dev/null
+    printf '%s%s%s ' "$C" "$prompt" "$N" > /dev/tty 2>/dev/null
     IFS= read -r answer < /dev/tty 2>/dev/null || answer=""
   else
-    printf '%s(default: %s)\n' "$prompt" "$default" >&2
+    printf '%s%s %s%s\n' "$D" "$prompt" "$default" "$N" >&2
     answer=""
   fi
   printf '%s' "${answer:-$default}"
 }
 
 yes_no() { # yes_no <prompt> <default y|n> -> 0 if yes
-  local a
-  a=$(ask "$1 " "$2")
-  case "$a" in [yY]*) return 0 ;; *) return 1 ;; esac
+  local def="${2:-n}" hint="[y/N]"
+  [ "$def" = y ] && hint="[Y/n]"
+  case "$(ask "$1 $hint" "$def")" in [yY]*) return 0 ;; *) return 1 ;; esac
 }
 
 # 1. Install OpenCode if missing, then make sure the shell can find it later
@@ -38,7 +51,7 @@ find_opencode() {
 
 install_v2() {
   curl -fsSL https://opencode.ai/v2/install | bash || {
-    say "Install failed. Install manually: https://opencode.ai/v2/docs/cli"
+    err "Install failed. Install manually: https://opencode.ai/v2/docs/cli"
     exit 1
   }
 }
@@ -47,14 +60,14 @@ if ! BIN=$(find_opencode); then
   say "OpenCode not found. Installing V2..."
   install_v2
   BIN=$(find_opencode) || { say "Installed, but binary still not found. Open a new shell and re-run."; exit 1; }
-  say "Installed: $BIN"
+  ok "Installed: $BIN"
 fi
 
 ver=$("$BIN" --version 2>/dev/null | head -1 || true)
 say "OpenCode: ${ver:-installed}"
 case "$ver" in
   *v1.*|*1.*)
-    say "Warning: this is V1. V2 config (plugins, providers, server) needs v2.x."
+    warn "Warning: this is V1. V2 config (plugins, providers, server) needs v2.x."
     if yes_no "Install V2 to $HOME/.opencode/bin and use it instead?" y; then
       install_v2
       if BIN=$(find_opencode) && [[ $("$BIN" --version 2>/dev/null) == *"v2."* ]]; then
@@ -90,11 +103,11 @@ DOMAIN=""
 PROXIED=no
 SSL_MODE=full
 if [ "$SERVICE" = yes ]; then
-  DOMAIN=$(ask "Domain for HTTPS (blank = localhost only): " "")
+  DOMAIN=$(ask "Domain for HTTPS (blank = localhost only)" "")
   if [ -n "$DOMAIN" ]; then
     yes_no "  Is it behind Cloudflare (proxied)?" n && PROXIED=yes
     if [ "$PROXIED" = yes ]; then
-      SSL_MODE=$(ask "  Cloudflare SSL mode (flexible=origin :80 only, full=origin needs cert): " "full")
+      SSL_MODE=$(ask "  Cloudflare SSL mode (flexible or full)" "full")
     fi
   fi
 fi
@@ -105,9 +118,9 @@ AGENTS=no; yes_no "Install global AGENTS.md coding guidelines?" y && AGENTS=yes
 ROUTER=no; yes_no "Do you have a 9Router instance?" n && ROUTER=yes
 ROUTER_URL=""; ROUTER_KEY=""; MODEL=""
 if [ "$ROUTER" = yes ]; then
-  ROUTER_URL=$(ask "  9Router base URL: " "http://127.0.0.1:20128/v1")
-  ROUTER_KEY=$(ask "  9Router API key (blank = read env 9ROUTER_API_KEY): " "")
-  MODEL=$(ask "  Model ID: " "Coding")
+  ROUTER_URL=$(ask "  9Router base URL" "http://127.0.0.1:20128/v1")
+  ROUTER_KEY=$(ask "  9Router API key (blank = read env 9ROUTER_API_KEY)" "")
+  MODEL=$(ask "  Model ID" "Coding")
 fi
 
 # 3. Config
@@ -142,7 +155,7 @@ else
 }
 EOF
 fi
-say "Config written: $cfg"
+ok "Config written: $cfg"
 say "Plugins: ponytail, opencode-mem (installed on first start)"
 
 # 3b. Global agent guidelines
@@ -152,7 +165,7 @@ if [ "$AGENTS" = yes ]; then
   elif curl -fsSL -m 30 "https://raw.githubusercontent.com/KurniawanSatria/opencode-setup/main/AGENTS.md" -o "$DEST/AGENTS.md"; then
     say "AGENTS.md: installed"
   else
-    say "AGENTS.md download failed"
+    warn "AGENTS.md download failed"
   fi
 fi
 
@@ -167,9 +180,9 @@ if [ "$SKILLS" = yes ]; then
       rm -rf "$DEST/skills/$name"
       cp -a "$d" "$DEST/skills/$name"
     done
-    say "Skills: $(ls -1 "$DEST/skills" | wc -l) installed in $DEST/skills"
+    ok "Skills: $(ls -1 "$DEST/skills" | wc -l) installed in $DEST/skills"
   else
-    say "Skills download failed; retry later: bash install.sh"
+    warn "Skills download failed; retry later: bash install.sh"
   fi
   rm -rf "$tmp"
 fi
@@ -243,10 +256,10 @@ EOF
     elif command -v certbot >/dev/null; then
       say "Requesting TLS certificate..."
       if $sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "admin@$DOMAIN" --redirect; then
-        say "TLS: https://$DOMAIN (auto-renew via certbot.timer)"
+        ok "TLS: https://$DOMAIN (auto-renew via certbot.timer)"
         [ "$PROXIED" = yes ] && say "Now set Cloudflare SSL/TLS mode to Full (strict)."
       else
-        say "certbot failed. DNS-only or proxied: check that $DOMAIN resolves here, then run:"
+        warn "certbot failed. DNS-only or proxied: check that $DOMAIN resolves here, then run:"
         say "  sudo certbot --nginx -d $DOMAIN"
       fi
     else
