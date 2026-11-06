@@ -60,6 +60,18 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Code Style
+
+**No comments. Fewest lines that stay readable.**
+
+- Never write comment lines in any language (JS, TS, CSS, HTML, Lua, Python, etc.): no `//`, `/* */`, `<!-- -->`, `--`, `#`. Names carry the meaning.
+- Existing comments in untouched code stay as they are (Section 3).
+- Prefer the compact form: expression-bodied arrows, early returns, ternaries for simple branches, destructuring, `?.` and `??`, method chaining.
+- No blank lines inside functions. At most one blank line between top-level blocks.
+- No single-use helpers or variables that only restate the next line.
+- Compact is not code golf: no nested ternaries, no cryptic names, no clever one-liners that need re-reading.
+- Before returning code, scan it for comment lines and remove any.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
