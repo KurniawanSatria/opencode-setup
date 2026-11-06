@@ -14,7 +14,7 @@ Press Enter to accept the default on every question.
 | Install global AGENTS.md? | **yes** | coding guidelines at `~/.config/opencode/AGENTS.md` |
 | Do you have 9Router? | no | writes a `9router` provider with base URL, key, model ID |
 | Run as systemd service? | no | `opencode.service` on `127.0.0.1:4096` with a generated `OPENCODE_SERVER_PASSWORD` |
-| Domain for HTTPS? | blank | nginx reverse proxy + `certbot --nginx` (only if service = yes) |
+| Domain for HTTPS? | blank | nginx reverse proxy; certbot for DNS-only/Full, skipped for Cloudflare Flexible |
 
 OpenCode itself is installed first if `opencode` is not found, and its bin directory is appended to `~/.bashrc` / `~/.zshrc` so later shells find it.
 

@@ -68,8 +68,16 @@ say "A few questions (Enter = default)."
 SERVICE=no; yes_no "Run OpenCode as a systemd service (headless web/API)?" n && SERVICE=yes
 
 DOMAIN=""
+PROXIED=no
+SSL_MODE=full
 if [ "$SERVICE" = yes ]; then
   DOMAIN=$(ask "Domain for HTTPS (blank = localhost only): " "")
+  if [ -n "$DOMAIN" ]; then
+    yes_no "  Is it behind Cloudflare (proxied)?" n && PROXIED=yes
+    if [ "$PROXIED" = yes ]; then
+      SSL_MODE=$(ask "  Cloudflare SSL mode (flexible=origin :80 only, full=origin needs cert): " "full")
+    fi
+  fi
 fi
 
 SKILLS=no; yes_no "Install all 19 Anthropic skills?" y && SKILLS=yes
@@ -179,11 +187,15 @@ EOF
 fi
 
 # 5. nginx + TLS
+# Cloudflare proxied with SSL mode Flexible: the edge already speaks HTTPS, origin only needs :80.
+# Proxied with Full/Full(strict), or DNS-only: certbot issues a cert on the origin.
 if [ -n "$DOMAIN" ]; then
   if ! command -v nginx >/dev/null; then
     say "nginx not found. Install nginx and proxy $DOMAIN -> 127.0.0.1:$PORT yourself."
   else
     sudo=""; [ "$(id -u)" -ne 0 ] && sudo="sudo"
+    XFP='$scheme'
+    [ "$PROXIED" = yes ] && XFP='$http_x_forwarded_proto'
     $sudo tee "/etc/nginx/sites-available/opencode" >/dev/null <<EOF
 server {
   listen 80;
@@ -195,17 +207,29 @@ server {
     proxy_set_header Connection "upgrade";
     proxy_set_header Host \$host;
     proxy_set_header X-Forwarded-For \$remote_addr;
+    proxy_set_header X-Forwarded-Proto $XFP;
     proxy_read_timeout 3600s;
   }
 }
 EOF
     $sudo ln -sf /etc/nginx/sites-available/opencode /etc/nginx/sites-enabled/opencode
     $sudo nginx -t && $sudo systemctl reload nginx
-    say "nginx: http://$DOMAIN"
-    if command -v certbot >/dev/null; then
+    say "nginx: http://$DOMAIN -> 127.0.0.1:$PORT"
+
+    if [ "$PROXIED" = yes ] && [ "$SSL_MODE" = flexible ]; then
+      say ""
+      say "Flexible mode: Cloudflare terminates TLS, origin serves plain :80."
+      say "In Cloudflare set SSL/TLS -> Flexible, and enable 'Always Use HTTPS'."
+      say "Skipping certbot (not needed)."
+    elif command -v certbot >/dev/null; then
       say "Requesting TLS certificate..."
-      $sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "admin@$DOMAIN" --redirect || \
-        say "certbot failed; run: sudo certbot --nginx -d $DOMAIN"
+      if $sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "admin@$DOMAIN" --redirect; then
+        say "TLS: https://$DOMAIN (auto-renew via certbot.timer)"
+        [ "$PROXIED" = yes ] && say "Now set Cloudflare SSL/TLS mode to Full (strict)."
+      else
+        say "certbot failed. DNS-only or proxied: check that $DOMAIN resolves here, then run:"
+        say "  sudo certbot --nginx -d $DOMAIN"
+      fi
     else
       say "certbot not installed: sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx -d $DOMAIN"
     fi
